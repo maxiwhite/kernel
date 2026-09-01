@@ -94,3 +94,15 @@ def test_review_reports_engine_start_recommendations(tmp_path):
     assert "Connect Freebuff" in report["recommendations"]
     assert report["next_safe_task"] is None
 
+
+def test_run_ready_execute_requires_explicit_allowlist(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [],
+        "tasks": [{"id": "run", "status": "ready", "command": [sys.executable, "-c", "print('ok')"]}],
+    }), encoding="utf-8")
+    result = run("run-ready", "--execute", "--allowed-executable", sys.executable, board=board)
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["executed"] == ["run"]
+
