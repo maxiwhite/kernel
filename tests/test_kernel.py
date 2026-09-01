@@ -143,3 +143,31 @@ def test_provider_health_reads_repository_configuration(tmp_path):
     report = json.loads(result.stdout)
     assert any(provider["name"] == "local" for provider in report["providers"])
 
+
+def test_register_persists_explicit_project_boundary(tmp_path):
+    board = tmp_path / "board"
+    project = tmp_path / "subangel"
+    project.mkdir()
+    result = run("register", "subangel", "--name", "SUBANGEL", "--root", str(project),
+                 "--owner", "maxiwhite", "--authority", "local", board=board)
+    assert result.returncode == 0
+    registered = json.loads(result.stdout)["project"]
+    assert registered["id"] == "subangel"
+    assert registered["owner"] == "maxiwhite"
+    assert registered["authority"] == "local"
+    assert registered["data_root"] == str(project.resolve())
+
+
+def test_register_rejects_identity_collision(tmp_path):
+    board = tmp_path / "board"
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    assert run("register", "oracle", "--name", "Oracle", "--root", str(first),
+               "--owner", "maxiwhite", "--authority", "local", board=board).returncode == 0
+    result = run("register", "oracle", "--name", "Oracle", "--root", str(second),
+                 "--owner", "other", "--authority", "remote", board=board)
+    assert result.returncode == 2
+    assert "identity collision" in result.stderr.lower()
+
