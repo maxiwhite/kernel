@@ -147,3 +147,17 @@ def test_benchmark_reports_average_and_cache_hit(tmp_path):
     assert result["cache_hits"] == 1
     assert result["average_duration_ms"] >= 0
 
+
+def test_run_ready_executes_explicit_task_commands_and_verifies_result(tmp_path):
+    write_board(tmp_path, [{"id": "run", "status": "planned", "command": [sys.executable, "-c", "print('run')"]}])
+    result = Coordinator(tmp_path).run_ready(allowed_executables=[sys.executable])
+    assert result["executed"] == ["run"]
+    data = json.loads((tmp_path / "board.json").read_text(encoding="utf-8"))
+    assert data["tasks"][0]["status"] == "verified"
+
+
+def test_run_ready_leaves_commandless_tasks_staged(tmp_path):
+    write_board(tmp_path, [{"id": "manual", "status": "planned"}])
+    result = Coordinator(tmp_path).run_ready(allowed_executables=[sys.executable])
+    assert result["staged"] == ["manual"]
+
