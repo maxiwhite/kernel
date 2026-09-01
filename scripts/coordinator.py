@@ -1,14 +1,16 @@
 """Local-first, lease-protected task coordination for KERNEL."""
 
+import hashlib
 import json
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 try:
     from .kernel import event, load, save, ready_tasks
-except ImportError:  # CLI execution from the scripts directory
+except ImportError:
     from kernel import event, load, save, ready_tasks
 
 
@@ -18,6 +20,7 @@ class Coordinator:
         self.workers = max(1, int(workers))
         self.lease_seconds = max(1, int(lease_seconds))
         self.lease_dir = self.board_root / "leases"
+        self.cache_dir = self.board_root / "cache"
 
     def ready_tasks(self):
         return ready_tasks(load(self.board_root))
@@ -67,11 +70,18 @@ class Coordinator:
         """Run one explicitly allowlisted argv without invoking a shell."""
         started = time.monotonic()
         command = [str(part) for part in argv]
+        cache_key = hashlib.sha256(json.dumps({"argv": command, "cwd": str(cwd or "")}, sort_keys=True).encode()).hexdigest()
+        cache_path = self.cache_dir / f"{cache_key}.json"
         executable = command[0] if command else ""
         if not command or executable not in {str(item) for item in allowed_executables}:
             result = {"task_id": task["id"], "status": "blocked", "returncode": None,
                       "stdout": "", "stderr": "command is not allowlisted", "duration_ms": 0}
             event(self.board_root, "task.blocked", result)
+            return result
+        if cache_path.exists():
+            result = json.loads(cache_path.read_text(encoding="utf-8"))
+            result = {**result, "task_id": task["id"], "status": "cached", "duration_ms": 0}
+            event(self.board_root, "task.cached", result)
             return result
         try:
             completed = subprocess.run(command, cwd=cwd, shell=False, capture_output=True,
@@ -85,7 +95,19 @@ class Coordinator:
                       "stdout": str(exc.stdout or "")[-10000:], "stderr": "timeout exceeded",
                       "duration_ms": round((time.monotonic() - started) * 1000)}
         event(self.board_root, f"task.{result['status']}", result)
+        if result["status"] == "passed":
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(result), encoding="utf-8")
         return result
+
+    def execute_batch(self, items, *, allowed_executables, timeout_seconds=300, cwd=None):
+        """Execute independent tasks concurrently, bounded by the worker cap."""
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            futures = [pool.submit(self.execute, task, argv,
+                                   allowed_executables=allowed_executables,
+                                   timeout_seconds=timeout_seconds, cwd=cwd)
+                       for task, argv in items]
+            return [future.result() for future in futures]
 
     def run_batch(self):
         data = load(self.board_root)
