@@ -1,0 +1,96 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).parents[1]
+CLI = ROOT / "scripts" / "kernel.py"
+
+
+def run(*args, board):
+    return subprocess.run(
+        [sys.executable, str(CLI), "--board", str(board), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_scan_discovers_canonical_and_todo_files(tmp_path):
+    project = tmp_path / "site"
+    project.mkdir()
+    (project / "ARCHITECTURE.md").write_text("# Canon", encoding="utf-8")
+    (project / "README.md").write_text("TODO: add tests\n", encoding="utf-8")
+    board = tmp_path / "board"
+    result = run("scan", "--root", str(project), board=board)
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["projects"][0]["canonical"][0].endswith("ARCHITECTURE.md")
+    assert any("add tests" in task["title"] for task in data["tasks"])
+
+
+def test_next_excludes_tasks_with_unmet_dependencies(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [],
+        "tasks": [
+            {"id": "a", "title": "Blocked", "status": "ready", "depends_on": ["missing"]},
+            {"id": "b", "title": "Ready", "status": "ready", "depends_on": []},
+        ],
+    }), encoding="utf-8")
+    result = run("next", board=board)
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["task"]["id"] == "b"
+
+
+def test_paid_provider_requires_approval(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [],
+        "tasks": [{"id": "paid", "title": "Paid work", "status": "ready", "risk": "low", "max_spend": 1}],
+    }), encoding="utf-8")
+    result = run("run-safe", "paid", "--provider", "premium", board=board)
+    assert result.returncode == 2
+    assert "approval" in result.stderr.lower()
+
+
+def test_approved_paid_provider_can_start_and_records_cost(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [], "tasks": [{"id": "paid", "title": "Paid work", "status": "ready", "max_spend": 2}]
+    }), encoding="utf-8")
+    assert run("approve", "paid", board=board).returncode == 0
+    result = run("run-safe", "paid", "--provider", "premium", board=board)
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["approval_required"] is True
+
+
+def test_verify_requires_evidence_and_writes_event(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [],
+        "tasks": [{"id": "t", "title": "Test", "status": "staged"}],
+    }), encoding="utf-8")
+    result = run("verify", "t", "--evidence", "tests passed", board=board)
+    assert result.returncode == 0
+    data = json.loads((board / "board.json").read_text(encoding="utf-8"))
+    assert data["tasks"][0]["status"] == "verified"
+    assert (board / "events.jsonl").read_text(encoding="utf-8").count("task.verified") == 1
+
+
+def test_review_reports_engine_start_recommendations(tmp_path):
+    project = tmp_path / "site"
+    project.mkdir()
+    (project / "ARCHITECTURE.md").write_text("# Canon", encoding="utf-8")
+    board = tmp_path / "board"
+    result = run("review", "--root", str(project), board=board)
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["scope"]["roots_scanned"] == 1
+    assert "Connect Freebuff" in report["recommendations"]
+    assert report["next_safe_task"] is None
+
