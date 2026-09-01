@@ -89,6 +89,19 @@ def test_execute_rejects_non_allowlisted_command(tmp_path):
     assert result["status"] == "blocked"
 
 
+def test_execute_rejects_working_directory_outside_allowed_roots(tmp_path):
+    write_board(tmp_path, [])
+    outside = tmp_path / "outside"
+    allowed = tmp_path / "allowed"
+    outside.mkdir()
+    allowed.mkdir()
+    result = Coordinator(tmp_path).execute(
+        {"id": "cwd"}, [sys.executable, "-c", "print('no')"],
+        allowed_executables=[sys.executable], cwd=outside, allowed_roots=[allowed]
+    )
+    assert result["status"] == "blocked"
+
+
 def test_execute_batch_runs_in_parallel_with_worker_cap(tmp_path):
     write_board(tmp_path, [])
     tasks = [{"id": "a"}, {"id": "b"}]
