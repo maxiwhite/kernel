@@ -1,5 +1,6 @@
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -109,3 +110,14 @@ def test_execute_reuses_successful_cache(tmp_path):
     second = coordinator.execute(task, argv, allowed_executables=[sys.executable])
     assert first["status"] == "passed"
     assert second["status"] == "cached"
+
+
+def test_execute_can_be_cancelled(tmp_path):
+    write_board(tmp_path, [])
+    cancel = threading.Event()
+    cancel.set()
+    result = Coordinator(tmp_path).execute(
+        {"id": "cancelled"}, [sys.executable, "-c", "import time; time.sleep(1)"],
+        allowed_executables=[sys.executable], cancel_event=cancel
+    )
+    assert result["status"] == "cancelled"
