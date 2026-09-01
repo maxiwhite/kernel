@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
+import json
+from pathlib import Path
 
 
 @dataclass
@@ -24,4 +26,21 @@ class ProviderAdapter:
 
     def health(self) -> dict[str, Any]:
         return {"name": self.name, "availability": self.availability, "limits": self.limits}
+
+
+def load_adapters(path: str | Path) -> list[ProviderAdapter]:
+    """Load validated provider metadata without creating network connections."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    adapters = []
+    for entry in payload.get("providers", []):
+        if not entry.get("name"):
+            raise ValueError("provider entries require a name")
+        adapters.append(ProviderAdapter(
+            name=entry["name"], capabilities=list(entry.get("capabilities", [])),
+            free_or_paid=entry.get("free_or_paid", "free"),
+            privacy_level=entry.get("privacy_level", "configured"),
+            availability=entry.get("availability", "unknown"),
+            limits=dict(entry.get("limits", {})),
+        ))
+    return adapters
 
