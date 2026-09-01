@@ -89,7 +89,7 @@ def main(argv=None):
     sub.add_parser("status"); s = sub.add_parser("scan"); s.add_argument("--root", required=True)
     rv = sub.add_parser("review"); rv.add_argument("--root", action="append", required=True)
     sub.add_parser("next"); r = sub.add_parser("run-safe"); r.add_argument("task_id"); r.add_argument("--provider", default="local")
-    rr = sub.add_parser("run-ready"); rr.add_argument("--workers", type=int, default=1); rr.add_argument("--execute", action="store_true"); rr.add_argument("--allowed-executable", action="append", default=[])
+    rr = sub.add_parser("run-ready"); rr.add_argument("--workers", type=int, default=1); rr.add_argument("--execute", action="store_true"); rr.add_argument("--allowed-executable", action="append", default=[]); rr.add_argument("--allowed-root", action="append", default=[])
     v = sub.add_parser("verify"); v.add_argument("task_id"); v.add_argument("--evidence", required=True)
     rec = sub.add_parser("record"); rec.add_argument("kind"); rec.add_argument("payload", nargs="?", default="{}")
     sub.add_parser("provider-health"); sub.add_parser("metrics"); a = sub.add_parser("approve"); a.add_argument("task_id")
@@ -102,7 +102,7 @@ def main(argv=None):
     if args.command == "run-ready":
         from coordinator import Coordinator
         coordinator = Coordinator(args.board, workers=args.workers)
-        result = coordinator.run_ready(allowed_executables=args.allowed_executable) if args.execute else coordinator.run_batch()
+        result = coordinator.run_ready(allowed_executables=args.allowed_executable, allowed_roots=args.allowed_root) if args.execute else coordinator.run_batch()
         print(json.dumps(result, indent=2)); return 0
     if args.command == "run-safe":
         task = next((t for t in data["tasks"] if t.get("id") == args.task_id), None)
