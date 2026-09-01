@@ -137,3 +137,9 @@ def test_metrics_reports_execution_and_verification_counts(tmp_path):
     assert report["passed_runs"] == 1
     assert report["cache_hits"] == 1
 
+
+def test_provider_health_reads_repository_configuration(tmp_path):
+    result = run("provider-health", board=tmp_path / "board")
+    report = json.loads(result.stdout)
+    assert any(provider["name"] == "local" for provider in report["providers"])
+
