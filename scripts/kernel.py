@@ -3,6 +3,10 @@ import argparse, json, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+ROOT = Path(__file__).parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 STATUSES = {"planned", "ready", "active", "staged", "verified", "blocked", "rejected", "failed", "published"}
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -120,7 +124,11 @@ def main(argv=None):
         if not task: return 1
         task["approved"] = True; save(args.board, data); event(args.board, "task.approved", {"task_id": args.task_id}); print(json.dumps(task, indent=2)); return 0
     if args.command == "record": event(args.board, args.kind, json.loads(args.payload)); print(json.dumps({"recorded": True})); return 0
-    if args.command == "provider-health": print(json.dumps({"providers": [{"name": "local", "free_or_paid": "free", "availability": "available"}, {"name": "freebuff", "free_or_paid": "free", "availability": "configured-only"}]})); return 0
+    if args.command == "provider-health":
+        from providers.adapter import load_adapters
+        config = Path(__file__).parents[1] / "providers" / "providers.json"
+        providers = [adapter.health() for adapter in load_adapters(config)] if config.exists() else []
+        print(json.dumps({"providers": providers}, indent=2)); return 0
     if args.command == "metrics": print(json.dumps(metrics(args.board), indent=2)); return 0
     return 0
 if __name__ == "__main__": sys.exit(main())
