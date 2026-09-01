@@ -66,7 +66,7 @@ class Coordinator:
             path.unlink()
             event(self.board_root, "task.released", {"task_id": task_id, "pid": os.getpid()})
 
-    def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None):
+    def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None, cancel_event=None):
         """Run one explicitly allowlisted argv without invoking a shell."""
         started = time.monotonic()
         command = [str(part) for part in argv]
@@ -83,12 +83,37 @@ class Coordinator:
             result = {**result, "task_id": task["id"], "status": "cached", "duration_ms": 0}
             event(self.board_root, "task.cached", result)
             return result
+        if cancel_event is not None and cancel_event.is_set():
+            result = {"task_id": task["id"], "status": "cancelled", "returncode": None,
+                      "stdout": "", "stderr": "cancelled before start", "duration_ms": 0}
+            event(self.board_root, "task.cancelled", result)
+            return result
         try:
-            completed = subprocess.run(command, cwd=cwd, shell=False, capture_output=True,
-                                       text=True, timeout=max(1, int(timeout_seconds)), check=False)
+            completed = subprocess.Popen(command, cwd=cwd, shell=False, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True)
+            deadline = time.monotonic() + max(1, int(timeout_seconds))
+            while completed.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    completed.terminate()
+                    stdout, stderr = completed.communicate(timeout=2)
+                    result = {"task_id": task["id"], "status": "cancelled", "returncode": completed.returncode,
+                              "stdout": stdout[-10000:], "stderr": stderr[-10000:],
+                              "duration_ms": round((time.monotonic() - started) * 1000)}
+                    event(self.board_root, "task.cancelled", result)
+                    return result
+                if time.monotonic() >= deadline:
+                    completed.terminate()
+                    stdout, stderr = completed.communicate(timeout=2)
+                    result = {"task_id": task["id"], "status": "failed", "returncode": None,
+                              "stdout": stdout[-10000:], "stderr": "timeout exceeded",
+                              "duration_ms": round((time.monotonic() - started) * 1000)}
+                    event(self.board_root, "task.failed", result)
+                    return result
+                time.sleep(0.01)
+            stdout, stderr = completed.communicate()
             status = "passed" if completed.returncode == 0 else "failed"
             result = {"task_id": task["id"], "status": status, "returncode": completed.returncode,
-                      "stdout": completed.stdout[-10000:], "stderr": completed.stderr[-10000:],
+                      "stdout": stdout[-10000:], "stderr": stderr[-10000:],
                       "duration_ms": round((time.monotonic() - started) * 1000)}
         except subprocess.TimeoutExpired as exc:
             result = {"task_id": task["id"], "status": "failed", "returncode": None,
@@ -100,12 +125,13 @@ class Coordinator:
             cache_path.write_text(json.dumps(result), encoding="utf-8")
         return result
 
-    def execute_batch(self, items, *, allowed_executables, timeout_seconds=300, cwd=None):
+    def execute_batch(self, items, *, allowed_executables, timeout_seconds=300, cwd=None, cancel_event=None):
         """Execute independent tasks concurrently, bounded by the worker cap."""
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = [pool.submit(self.execute, task, argv,
                                    allowed_executables=allowed_executables,
-                                   timeout_seconds=timeout_seconds, cwd=cwd)
+                                   timeout_seconds=timeout_seconds, cwd=cwd,
+                                   cancel_event=cancel_event)
                        for task, argv in items]
             return [future.result() for future in futures]
 
