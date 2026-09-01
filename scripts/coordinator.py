@@ -66,13 +66,22 @@ class Coordinator:
             path.unlink()
             event(self.board_root, "task.released", {"task_id": task_id, "pid": os.getpid()})
 
-    def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None, cancel_event=None):
+    def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None,
+                cancel_event=None, allowed_roots=None):
         """Run one explicitly allowlisted argv without invoking a shell."""
         started = time.monotonic()
         command = [str(part) for part in argv]
         cache_key = hashlib.sha256(json.dumps({"argv": command, "cwd": str(cwd or "")}, sort_keys=True).encode()).hexdigest()
         cache_path = self.cache_dir / f"{cache_key}.json"
         executable = command[0] if command else ""
+        if cwd is not None and allowed_roots:
+            cwd_path = Path(cwd).resolve()
+            roots = [Path(root).resolve() for root in allowed_roots]
+            if not any(cwd_path == root or root in cwd_path.parents for root in roots):
+                result = {"task_id": task["id"], "status": "blocked", "returncode": None,
+                          "stdout": "", "stderr": "working directory is not allowlisted", "duration_ms": 0}
+                event(self.board_root, "task.blocked", result)
+                return result
         if not command or executable not in {str(item) for item in allowed_executables}:
             result = {"task_id": task["id"], "status": "blocked", "returncode": None,
                       "stdout": "", "stderr": "command is not allowlisted", "duration_ms": 0}
