@@ -72,6 +72,7 @@ def main(argv=None):
     sub.add_parser("status"); s = sub.add_parser("scan"); s.add_argument("--root", required=True)
     rv = sub.add_parser("review"); rv.add_argument("--root", action="append", required=True)
     sub.add_parser("next"); r = sub.add_parser("run-safe"); r.add_argument("task_id"); r.add_argument("--provider", default="local")
+    rr = sub.add_parser("run-ready"); rr.add_argument("--workers", type=int, default=1)
     v = sub.add_parser("verify"); v.add_argument("task_id"); v.add_argument("--evidence", required=True)
     rec = sub.add_parser("record"); rec.add_argument("kind"); rec.add_argument("payload", nargs="?", default="{}")
     sub.add_parser("provider-health"); a = sub.add_parser("approve"); a.add_argument("task_id")
@@ -81,13 +82,17 @@ def main(argv=None):
     if args.command == "status": print(json.dumps({"projects": len(data["projects"]), "tasks": {s: sum(t.get("status") == s for t in data["tasks"]) for s in STATUSES}}, indent=2)); return 0
     if args.command == "next":
         tasks = ready_tasks(data); print(json.dumps({"task": tasks[0] if tasks else None}, indent=2)); return 0
+    if args.command == "run-ready":
+        from coordinator import Coordinator
+        result = Coordinator(args.board, workers=args.workers).run_batch()
+        print(json.dumps(result, indent=2)); return 0
     if args.command == "run-safe":
         task = next((t for t in data["tasks"] if t.get("id") == args.task_id), None)
         if not task: print("task not found", file=sys.stderr); return 1
         paid = args.provider not in {"local", "freebuff", "free"}
         if paid and not task.get("approved"):
             print("approval required before paid provider execution", file=sys.stderr); return 2
-        task["status"] = "active"; task["provider"] = args.provider; save(args.board, data); event(args.board, "task.started", {"task_id": args.task_id, "provider": args.provider}); print(json.dumps({"task_id": args.task_id, "provider": args.provider, "status": "active", "changed_paths": [], "cost_estimate": task.get("max_spend", 0) if paid else 0, "approval_required": paid, "verification_required": task.get("verification_required", True), "evidence": [], "error": None}, indent=2)); return 0
+        task["status"] = "staged"; task["provider"] = args.provider; save(args.board, data); event(args.board, "task.staged", {"task_id": args.task_id, "provider": args.provider}); print(json.dumps({"task_id": args.task_id, "provider": args.provider, "status": "staged", "changed_paths": [], "cost_estimate": task.get("max_spend", 0) if paid else 0, "approval_required": paid, "verification_required": task.get("verification_required", True), "evidence": [], "error": None}, indent=2)); return 0
     if args.command == "verify":
         task = next((t for t in data["tasks"] if t.get("id") == args.task_id), None)
         if not task: print("task not found", file=sys.stderr); return 1
