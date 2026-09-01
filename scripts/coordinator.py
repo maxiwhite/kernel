@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -61,6 +62,30 @@ class Coordinator:
         if path.exists():
             path.unlink()
             event(self.board_root, "task.released", {"task_id": task_id, "pid": os.getpid()})
+
+    def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None):
+        """Run one explicitly allowlisted argv without invoking a shell."""
+        started = time.monotonic()
+        command = [str(part) for part in argv]
+        executable = command[0] if command else ""
+        if not command or executable not in {str(item) for item in allowed_executables}:
+            result = {"task_id": task["id"], "status": "blocked", "returncode": None,
+                      "stdout": "", "stderr": "command is not allowlisted", "duration_ms": 0}
+            event(self.board_root, "task.blocked", result)
+            return result
+        try:
+            completed = subprocess.run(command, cwd=cwd, shell=False, capture_output=True,
+                                       text=True, timeout=max(1, int(timeout_seconds)), check=False)
+            status = "passed" if completed.returncode == 0 else "failed"
+            result = {"task_id": task["id"], "status": status, "returncode": completed.returncode,
+                      "stdout": completed.stdout[-10000:], "stderr": completed.stderr[-10000:],
+                      "duration_ms": round((time.monotonic() - started) * 1000)}
+        except subprocess.TimeoutExpired as exc:
+            result = {"task_id": task["id"], "status": "failed", "returncode": None,
+                      "stdout": str(exc.stdout or "")[-10000:], "stderr": "timeout exceeded",
+                      "duration_ms": round((time.monotonic() - started) * 1000)}
+        event(self.board_root, f"task.{result['status']}", result)
+        return result
 
     def run_batch(self):
         data = load(self.board_root)
