@@ -1,0 +1,6 @@
+{
+  "providers": [
+    {"name": "local", "free_or_paid": "free", "privacy_level": "local", "capabilities": ["inspection", "testing", "drafting"]},
+    {"name": "freebuff", "free_or_paid": "free", "privacy_level": "configured", "capabilities": [], "availability": "configured-only"}
+  ]
+}

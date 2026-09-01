@@ -1,0 +1,18 @@
+{
+  "name": "kernel",
+  "version": "0.1.0+codex.20260901162913",
+  "description": "Local-first Oracle work coordination, safe agent routing, budget gates, and verification for Codex.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kernel",
+    "shortDescription": "Coordinate canonical work safely.",
+    "longDescription": "KERNEL maintains a file-based work board, discovers canonical project tasks, routes safe work through local and free providers, and records verification evidence for Oracle.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use KERNEL to inspect the canonical work board, select the next safe task, route it through the lowest-cost capable provider, and verify the result."
+  }
+}
