@@ -64,7 +64,6 @@ def test_claim_reclaims_expired_lease(tmp_path):
     (coordinator.lease_dir / "a.json").write_text(
         json.dumps({"expires": time.time() - 1}), encoding="utf-8"
     )
-
     assert coordinator.claim("a") is True
 
 
@@ -86,3 +85,27 @@ def test_execute_rejects_non_allowlisted_command(tmp_path):
         {"id": "exec", "status": "staged"}, ["not-allowed"], allowed_executables=[]
     )
     assert result["status"] == "blocked"
+
+
+def test_execute_batch_runs_in_parallel_with_worker_cap(tmp_path):
+    write_board(tmp_path, [])
+    tasks = [{"id": "a"}, {"id": "b"}]
+    argv = [sys.executable, "-c", "import time; time.sleep(.25); print('ok')"]
+    started = time.monotonic()
+    results = Coordinator(tmp_path, workers=2).execute_batch(
+        [(task, argv) for task in tasks], allowed_executables=[sys.executable]
+    )
+    elapsed = time.monotonic() - started
+    assert [result["status"] for result in results] == ["passed", "passed"]
+    assert elapsed < 0.50
+
+
+def test_execute_reuses_successful_cache(tmp_path):
+    write_board(tmp_path, [])
+    coordinator = Coordinator(tmp_path)
+    task = {"id": "cached"}
+    argv = [sys.executable, "-c", "print('cached')"]
+    first = coordinator.execute(task, argv, allowed_executables=[sys.executable])
+    second = coordinator.execute(task, argv, allowed_executables=[sys.executable])
+    assert first["status"] == "passed"
+    assert second["status"] == "cached"
