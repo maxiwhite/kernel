@@ -203,7 +203,7 @@ class Coordinator:
         event(self.board_root, "benchmark.completed", report)
         return report
 
-    def run_ready(self, *, allowed_executables, timeout_seconds=300, cancel_event=None):
+    def run_ready(self, *, allowed_executables, allowed_roots=None, timeout_seconds=300, cancel_event=None):
         """Execute ready tasks with explicit commands; stage the rest."""
         data = load(self.board_root)
         executed, staged, failed = [], [], []
@@ -221,7 +221,8 @@ class Coordinator:
             try:
                 task["status"] = "active"
                 result = self.execute(task, task["command"], allowed_executables=allowed_executables,
-                                      timeout_seconds=timeout_seconds, cwd=task.get("cwd"), cancel_event=cancel_event)
+                                      timeout_seconds=timeout_seconds, cwd=task.get("cwd"), cancel_event=cancel_event,
+                                      allowed_roots=allowed_roots)
                 task["result"] = result
                 task["status"] = "verified" if result["status"] in {"passed", "cached"} else result["status"]
                 (executed if task["status"] == "verified" else failed).append(task_id)
