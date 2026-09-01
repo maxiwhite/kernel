@@ -66,6 +66,14 @@ class Coordinator:
             path.unlink()
             event(self.board_root, "task.released", {"task_id": task_id, "pid": os.getpid()})
 
+    @staticmethod
+    def _terminate_process_tree(process):
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                           capture_output=True, check=False)
+        else:
+            process.terminate()
+
     def execute(self, task, argv, *, allowed_executables, timeout_seconds=300, cwd=None,
                 cancel_event=None, allowed_roots=None):
         """Run one explicitly allowlisted argv without invoking a shell."""
@@ -98,12 +106,15 @@ class Coordinator:
             event(self.board_root, "task.cancelled", result)
             return result
         try:
+            options = {"start_new_session": True} if os.name != "nt" else {
+                "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP
+            }
             completed = subprocess.Popen(command, cwd=cwd, shell=False, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE, text=True)
+                                         stderr=subprocess.PIPE, text=True, **options)
             deadline = time.monotonic() + max(1, int(timeout_seconds))
             while completed.poll() is None:
                 if cancel_event is not None and cancel_event.is_set():
-                    completed.terminate()
+                    self._terminate_process_tree(completed)
                     stdout, stderr = completed.communicate(timeout=2)
                     result = {"task_id": task["id"], "status": "cancelled", "returncode": completed.returncode,
                               "stdout": stdout[-10000:], "stderr": stderr[-10000:],
@@ -111,7 +122,7 @@ class Coordinator:
                     event(self.board_root, "task.cancelled", result)
                     return result
                 if time.monotonic() >= deadline:
-                    completed.terminate()
+                    self._terminate_process_tree(completed)
                     stdout, stderr = completed.communicate(timeout=2)
                     result = {"task_id": task["id"], "status": "failed", "returncode": None,
                               "stdout": stdout[-10000:], "stderr": "timeout exceeded",
