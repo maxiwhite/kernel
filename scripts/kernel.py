@@ -20,6 +20,20 @@ def load(root):
         return data
     return json.loads(p.read_text(encoding="utf-8"))
 def save(root, data): board_file(root).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+def register_project(root, project_id, name, project_root, owner, authority):
+    data = load(root)
+    normalized = {"id": project_id, "name": name, "path": str(Path(project_root).resolve()),
+                  "owner": owner, "authority": authority, "data_root": str(Path(project_root).resolve()),
+                  "canonical": []}
+    existing = next((p for p in data["projects"] if p.get("id") == project_id), None)
+    if existing and any(existing.get(key) != normalized[key] for key in ("name", "path", "owner", "authority", "data_root")):
+        raise ValueError(f"identity collision for project {project_id}")
+    if not existing:
+        data["projects"].append(normalized)
+        save(root, data)
+        event(root, "project.registered", normalized)
+        return normalized
+    return existing
 def event(root, kind, payload):
     with (root / "events.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps({"at": now(), "kind": kind, "payload": payload}, sort_keys=True) + "\n")
@@ -91,6 +105,7 @@ def main(argv=None):
     ap.add_argument("--board", type=Path, default=Path(".kernel"))
     sub = ap.add_subparsers(dest="command", required=True)
     sub.add_parser("status"); s = sub.add_parser("scan"); s.add_argument("--root", required=True)
+    reg = sub.add_parser("register"); reg.add_argument("project_id"); reg.add_argument("--name", required=True); reg.add_argument("--root", required=True); reg.add_argument("--owner", required=True); reg.add_argument("--authority", required=True)
     rv = sub.add_parser("review"); rv.add_argument("--root", action="append", required=True)
     sub.add_parser("next"); r = sub.add_parser("run-safe"); r.add_argument("task_id"); r.add_argument("--provider", default="local")
     rr = sub.add_parser("run-ready"); rr.add_argument("--workers", type=int, default=1); rr.add_argument("--execute", action="store_true"); rr.add_argument("--allowed-executable", action="append", default=[]); rr.add_argument("--allowed-root", action="append", default=[])
@@ -98,6 +113,12 @@ def main(argv=None):
     rec = sub.add_parser("record"); rec.add_argument("kind"); rec.add_argument("payload", nargs="?", default="{}")
     sub.add_parser("provider-health"); sub.add_parser("metrics"); a = sub.add_parser("approve"); a.add_argument("task_id")
     args = ap.parse_args(argv); data = load(args.board)
+    if args.command == "register":
+        try:
+            project = register_project(args.board, args.project_id, args.name, args.root, args.owner, args.authority)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr); return 2
+        print(json.dumps({"project": project}, indent=2)); return 0
     if args.command == "scan": print(json.dumps(scan(args.board, args.root), indent=2)); return 0
     if args.command == "review": print(json.dumps(review(args.board, args.root), indent=2)); return 0
     if args.command == "status": print(json.dumps({"projects": len(data["projects"]), "tasks": {s: sum(t.get("status") == s for t in data["tasks"]) for s in STATUSES}}, indent=2)); return 0
