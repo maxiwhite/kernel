@@ -171,3 +171,15 @@ def test_register_rejects_identity_collision(tmp_path):
     assert result.returncode == 2
     assert "identity collision" in result.stderr.lower()
 
+
+def test_register_rejects_data_root_collision(tmp_path):
+    board = tmp_path / "board"
+    project = tmp_path / "shared"
+    project.mkdir()
+    assert run("register", "subangel", "--name", "SUBANGEL", "--root", str(project),
+               "--owner", "maxiwhite", "--authority", "local", board=board).returncode == 0
+    result = run("register", "oracle", "--name", "Oracle", "--root", str(project),
+                 "--owner", "maxiwhite", "--authority", "local", board=board)
+    assert result.returncode == 2
+    assert "data-root collision" in result.stderr.lower()
+
