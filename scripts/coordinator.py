@@ -162,6 +162,33 @@ class Coordinator:
         event(self.board_root, "benchmark.completed", report)
         return report
 
+    def run_ready(self, *, allowed_executables, timeout_seconds=300, cancel_event=None):
+        """Execute ready tasks with explicit commands; stage the rest."""
+        data = load(self.board_root)
+        executed, staged, failed = [], [], []
+        ready_ids = {task["id"] for task in self.ready_tasks()}
+        for task in [task for task in data.get("tasks", []) if task.get("id") in ready_ids]:
+            task_id = task["id"]
+            if not task.get("command"):
+                task["status"] = "staged"
+                staged.append(task_id)
+                event(self.board_root, "task.staged", {"task_id": task_id, "reason": "no command"})
+                continue
+            if not self.claim(task_id):
+                failed.append(task_id)
+                continue
+            try:
+                task["status"] = "active"
+                result = self.execute(task, task["command"], allowed_executables=allowed_executables,
+                                      timeout_seconds=timeout_seconds, cwd=task.get("cwd"), cancel_event=cancel_event)
+                task["result"] = result
+                task["status"] = "verified" if result["status"] in {"passed", "cached"} else result["status"]
+                (executed if task["status"] == "verified" else failed).append(task_id)
+            finally:
+                self.release(task_id)
+        save(self.board_root, data)
+        return {"executed": executed, "staged": staged, "failed": failed}
+
     def run_batch(self):
         data = load(self.board_root)
         selected = []
