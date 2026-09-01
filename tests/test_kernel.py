@@ -106,3 +106,20 @@ def test_run_ready_execute_requires_explicit_allowlist(tmp_path):
     assert result.returncode == 0
     assert json.loads(result.stdout)["executed"] == ["run"]
 
+
+def test_metrics_reports_execution_and_verification_counts(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [], "tasks": [{"id": "done", "status": "verified"}],
+    }), encoding="utf-8")
+    (board / "events.jsonl").write_text(
+        '{"kind":"task.passed","payload":{"duration_ms":12}}\n'
+        '{"kind":"task.cached","payload":{"duration_ms":0}}\n', encoding="utf-8"
+    )
+    result = run("metrics", board=board)
+    report = json.loads(result.stdout)
+    assert report["verified_tasks"] == 1
+    assert report["passed_runs"] == 1
+    assert report["cache_hits"] == 1
+
