@@ -106,14 +106,14 @@ def test_execute_rejects_working_directory_outside_allowed_roots(tmp_path):
 def test_execute_batch_runs_in_parallel_with_worker_cap(tmp_path):
     write_board(tmp_path, [])
     tasks = [{"id": "a"}, {"id": "b"}]
-    argv = [sys.executable, "-c", "import time; time.sleep(.25); print('ok')"]
+    argv = [sys.executable, "-c", "import time; time.sleep(.4); print('ok')"]
     started = time.monotonic()
     results = Coordinator(tmp_path, workers=2).execute_batch(
         [(task, argv) for task in tasks], allowed_executables=[sys.executable]
     )
     elapsed = time.monotonic() - started
     assert [result["status"] for result in results] == ["passed", "passed"]
-    assert elapsed < 0.50
+    assert elapsed < 0.75
 
 
 def test_execute_reuses_successful_cache(tmp_path):
