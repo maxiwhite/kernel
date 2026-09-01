@@ -1,7 +1,7 @@
 """Local-first, lease-protected task coordination for KERNEL."""
 
-import hashlib
 import json
+import hashlib
 import os
 import subprocess
 import time
@@ -10,7 +10,7 @@ from pathlib import Path
 
 try:
     from .kernel import event, load, save, ready_tasks
-except ImportError:
+except ImportError:  # CLI execution from the scripts directory
     from kernel import event, load, save, ready_tasks
 
 
@@ -125,15 +125,42 @@ class Coordinator:
             cache_path.write_text(json.dumps(result), encoding="utf-8")
         return result
 
-    def execute_batch(self, items, *, allowed_executables, timeout_seconds=300, cwd=None, cancel_event=None):
+    def execute_batch(self, items, *, allowed_executables, timeout_seconds=300, cwd=None):
         """Execute independent tasks concurrently, bounded by the worker cap."""
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = [pool.submit(self.execute, task, argv,
                                    allowed_executables=allowed_executables,
-                                   timeout_seconds=timeout_seconds, cwd=cwd,
-                                   cancel_event=cancel_event)
+                                   timeout_seconds=timeout_seconds, cwd=cwd)
                        for task, argv in items]
             return [future.result() for future in futures]
+
+    def run_provider(self, provider_name, task, provider, *, retries=0):
+        """Run a provider adapter with bounded retries for failed results."""
+        attempts = 0
+        while True:
+            attempts += 1
+            result = dict(provider(task))
+            if result.get("status") != "failed" or attempts > retries:
+                result["provider"] = provider_name
+                result["attempts"] = attempts
+                event(self.board_root, f"provider.{result.get('status', 'unknown')}", result)
+                return result
+
+    def benchmark(self, tasks, argv, *, allowed_executables, repetitions=3, timeout_seconds=300, cwd=None):
+        """Measure repeated execution, including cache reuse."""
+        samples = []
+        cache_hits = 0
+        for index in range(max(1, int(repetitions))):
+            result = self.execute(tasks[index % len(tasks)], argv,
+                                  allowed_executables=allowed_executables,
+                                  timeout_seconds=timeout_seconds, cwd=cwd)
+            samples.append(result.get("duration_ms", 0))
+            cache_hits += result.get("status") == "cached"
+        report = {"runs": len(samples), "cache_hits": cache_hits,
+                  "average_duration_ms": round(sum(samples) / len(samples), 2),
+                  "min_duration_ms": min(samples), "max_duration_ms": max(samples)}
+        event(self.board_root, "benchmark.completed", report)
+        return report
 
     def run_batch(self):
         data = load(self.board_root)
@@ -152,3 +179,4 @@ class Coordinator:
             event(self.board_root, "task.staged", {"task_id": task["id"], "providers": task["provider_candidates"]})
         save(self.board_root, data)
         return {"status": "staged", "selected": selected, "skipped": skipped, "worker_limit": self.workers}
+
