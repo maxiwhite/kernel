@@ -155,6 +155,23 @@ def test_select_provider_returns_none_when_capability_unavailable(tmp_path):
     assert Coordinator(tmp_path).select_provider({"capability": "testing"}, [provider]) is None
 
 
+def test_execute_with_provider_routes_selected_adapter(tmp_path):
+    write_board(tmp_path, [])
+    provider = ProviderAdapter("local", ["testing"], availability="available",
+                              executor=lambda task: {"status": "passed", "task": task["id"]})
+    result = Coordinator(tmp_path).execute_with_provider(
+        {"id": "route", "capability": "testing"}, [provider], retries=1
+    )
+    assert result["status"] == "passed"
+    assert result["provider"] == "local"
+
+
+def test_execute_with_provider_reports_unavailable(tmp_path):
+    write_board(tmp_path, [])
+    result = Coordinator(tmp_path).execute_with_provider({"id": "route"}, [], retries=1)
+    assert result["status"] == "unavailable"
+
+
 def test_execute_retries_transient_failure_once(tmp_path):
     write_board(tmp_path, [])
     attempts = {"count": 0}
