@@ -13,6 +13,7 @@ KERNEL is a local-first Codex plugin for coordinating registered ecosystem work 
 - append-only structured execution events
 - provider ordering: local, configured free, Freebuff, then approved paid providers
 - evidence-based task states; staging is not verification
+- explicit project registration with identity, owner, authority, and data-root boundaries
 
 The board is created wherever `--board` points (default: `.kernel`). It stores projects and tasks in `board.json`, leases and cache entries under the board directory, and execution evidence in `events.jsonl`.
 
@@ -21,12 +22,15 @@ The board is created wherever `--board` points (default: `.kernel`). It stores p
 ```text
 python scripts/kernel.py --board .kernel status
 python scripts/kernel.py --board .kernel scan --root <project>
+python scripts/kernel.py --board .kernel register subangel --name SUBANGEL --root <project> --owner maxiwhite --authority local
 python scripts/kernel.py --board .kernel next
 python scripts/kernel.py --board .kernel run-ready --workers 2
 python -m pytest tests
 ```
 
 The Python coordinator API is in `scripts/coordinator.py`. `execute()` accepts an argv list and an explicit `allowed_executables` list. It never evaluates shell text. `execute_batch()` runs independent commands concurrently up to the configured worker limit.
+
+Registration is explicit and durable. Reusing a project ID with a different name, root, owner, or authority is rejected as an identity collision. Registration does not execute work or grant publication authority.
 
 ## Operating boundary
 
@@ -35,3 +39,4 @@ KERNEL prefers local execution. Remote providers, paid work, commits, pushes, pu
 ## Development
 
 The project targets Python 3.10–3.12 and runs the same test suite in GitHub Actions. Generated board data and test scratch directories are ignored by Git. See `docs/superpowers/specs/2026-09-01-kernel-coordinator-design.md` for the coordinator design and the per-directory README files for data contracts.
+
