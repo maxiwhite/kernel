@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from scripts.coordinator import Coordinator
-from providers.adapter import ProviderAdapter
+from providers.adapter import ProviderAdapter, load_adapters
 
 
 def write_board(root: Path, tasks: list[dict], providers: list[dict] | None = None):
@@ -170,6 +170,17 @@ def test_execute_with_provider_reports_unavailable(tmp_path):
     write_board(tmp_path, [])
     result = Coordinator(tmp_path).execute_with_provider({"id": "route"}, [], retries=1)
     assert result["status"] == "unavailable"
+
+
+def test_load_adapters_reads_versioned_provider_config(tmp_path):
+    config = tmp_path / "providers.json"
+    config.write_text(json.dumps({"providers": [{
+        "name": "local", "capabilities": ["testing"],
+        "free_or_paid": "free", "availability": "available"
+    }]}), encoding="utf-8")
+    adapters = load_adapters(config)
+    assert adapters[0].name == "local"
+    assert adapters[0].capabilities == ["testing"]
 
 
 def test_execute_retries_transient_failure_once(tmp_path):
