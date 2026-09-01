@@ -107,6 +107,20 @@ def test_run_ready_execute_requires_explicit_allowlist(tmp_path):
     assert json.loads(result.stdout)["executed"] == ["run"]
 
 
+def test_run_ready_enforces_allowed_root(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (board / "board.json").write_text(json.dumps({
+        "projects": [], "tasks": [{"id": "run", "status": "ready",
+        "command": [sys.executable, "-c", "print('no')"], "cwd": str(outside)}],
+    }), encoding="utf-8")
+    result = run("run-ready", "--execute", "--allowed-executable", sys.executable,
+                 "--allowed-root", str(board), board=board)
+    assert json.loads(result.stdout)["failed"] == ["run"]
+
+
 def test_metrics_reports_execution_and_verification_counts(tmp_path):
     board = tmp_path / "board"
     board.mkdir()
