@@ -177,6 +177,16 @@ class Coordinator:
                 event(self.board_root, f"provider.{result.get('status', 'unknown')}", result)
                 return result
 
+    def execute_with_provider(self, task, providers, *, retries=0):
+        """Select and execute a capable provider adapter with bounded retries."""
+        provider = self.select_provider(task, providers)
+        if provider is None:
+            result = {"task_id": task.get("id"), "status": "unavailable",
+                      "error": "no available provider matches task capability"}
+            event(self.board_root, "provider.unavailable", result)
+            return result
+        return self.run_provider(provider.name, task, provider.execute, retries=retries)
+
     def benchmark(self, tasks, argv, *, allowed_executables, repetitions=3, timeout_seconds=300, cwd=None):
         """Measure repeated execution, including cache reuse."""
         samples = []
