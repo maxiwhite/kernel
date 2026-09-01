@@ -12,6 +12,10 @@ dependencies = []
 [project.scripts]
 kernel = "scripts.kernel:main"
 
+[tool.setuptools]
+packages = ["scripts", "providers"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
