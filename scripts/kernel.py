@@ -28,6 +28,9 @@ def register_project(root, project_id, name, project_root, owner, authority):
     existing = next((p for p in data["projects"] if p.get("id") == project_id), None)
     if existing and any(existing.get(key) != normalized[key] for key in ("name", "path", "owner", "authority", "data_root")):
         raise ValueError(f"identity collision for project {project_id}")
+    root_owner = next((p for p in data["projects"] if p.get("data_root") == normalized["data_root"] and p.get("id") != project_id), None)
+    if root_owner:
+        raise ValueError(f"data-root collision: {normalized['data_root']} is owned by {root_owner['id']}")
     if not existing:
         data["projects"].append(normalized)
         save(root, data)
