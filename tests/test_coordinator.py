@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from scripts.coordinator import Coordinator
+from providers.adapter import ProviderAdapter
 
 
 def write_board(root: Path, tasks: list[dict], providers: list[dict] | None = None):
@@ -135,6 +136,23 @@ def test_execute_can_be_cancelled(tmp_path):
         allowed_executables=[sys.executable], cancel_event=cancel
     )
     assert result["status"] == "cancelled"
+
+
+def test_select_provider_matches_capability_and_approval(tmp_path):
+    write_board(tmp_path, [])
+    providers = [
+        ProviderAdapter("local", ["testing"], availability="available"),
+        ProviderAdapter("paid", ["testing"], free_or_paid="paid", availability="available"),
+    ]
+    coordinator = Coordinator(tmp_path)
+    assert coordinator.select_provider({"capability": "testing"}, providers).name == "local"
+    assert coordinator.select_provider({"capability": "testing", "approved": True}, providers).name == "local"
+
+
+def test_select_provider_returns_none_when_capability_unavailable(tmp_path):
+    write_board(tmp_path, [])
+    provider = ProviderAdapter("local", ["inspection"], availability="available")
+    assert Coordinator(tmp_path).select_provider({"capability": "testing"}, [provider]) is None
 
 
 def test_execute_retries_transient_failure_once(tmp_path):
