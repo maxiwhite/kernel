@@ -65,6 +65,7 @@ def test_claim_reclaims_expired_lease(tmp_path):
     (coordinator.lease_dir / "a.json").write_text(
         json.dumps({"expires": time.time() - 1}), encoding="utf-8"
     )
+
     assert coordinator.claim("a") is True
 
 
@@ -121,3 +122,28 @@ def test_execute_can_be_cancelled(tmp_path):
         allowed_executables=[sys.executable], cancel_event=cancel
     )
     assert result["status"] == "cancelled"
+
+
+def test_execute_retries_transient_failure_once(tmp_path):
+    write_board(tmp_path, [])
+    attempts = {"count": 0}
+
+    def provider(_task):
+        attempts["count"] += 1
+        return {"status": "passed"} if attempts["count"] == 2 else {"status": "failed"}
+
+    result = Coordinator(tmp_path).run_provider("local", {"id": "retry"}, provider, retries=1)
+    assert result["status"] == "passed"
+    assert result["attempts"] == 2
+
+
+def test_benchmark_reports_average_and_cache_hit(tmp_path):
+    write_board(tmp_path, [])
+    result = Coordinator(tmp_path).benchmark(
+        [{"id": "bench"}], [sys.executable, "-c", "print('bench')"],
+        allowed_executables=[sys.executable], repetitions=2
+    )
+    assert result["runs"] == 2
+    assert result["cache_hits"] == 1
+    assert result["average_duration_ms"] >= 0
+
