@@ -19,6 +19,23 @@ def save(root, data): board_file(root).write_text(json.dumps(data, indent=2) + "
 def event(root, kind, payload):
     with (root / "events.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps({"at": now(), "kind": kind, "payload": payload}, sort_keys=True) + "\n")
+def metrics(root):
+    data = load(root); counts = {s: sum(t.get("status") == s for t in data["tasks"]) for s in STATUSES}
+    durations = []; passed = cached = failed = cancelled = 0
+    journal = root / "events.jsonl"
+    if journal.exists():
+        for line in journal.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try: record = json.loads(line); kind = record.get("kind", ""); payload = record.get("payload", {})
+            except json.JSONDecodeError: continue
+            if kind == "task.passed": passed += 1
+            if kind == "task.cached": cached += 1
+            if kind == "task.failed": failed += 1
+            if kind == "task.cancelled": cancelled += 1
+            if isinstance(payload.get("duration_ms"), (int, float)): durations.append(payload["duration_ms"])
+    return {"task_statuses": counts, "verified_tasks": counts.get("verified", 0), "passed_runs": passed,
+            "cache_hits": cached, "failed_runs": failed, "cancelled_runs": cancelled,
+            "average_duration_ms": round(sum(durations) / len(durations), 2) if durations else 0,
+            "measured_runs": len(durations)}
 def scan(root, scan_root):
     data = load(root); path = Path(scan_root).resolve()
     project = next((p for p in data["projects"] if p.get("path") == str(path)), None)
@@ -75,7 +92,7 @@ def main(argv=None):
     rr = sub.add_parser("run-ready"); rr.add_argument("--workers", type=int, default=1); rr.add_argument("--execute", action="store_true"); rr.add_argument("--allowed-executable", action="append", default=[])
     v = sub.add_parser("verify"); v.add_argument("task_id"); v.add_argument("--evidence", required=True)
     rec = sub.add_parser("record"); rec.add_argument("kind"); rec.add_argument("payload", nargs="?", default="{}")
-    sub.add_parser("provider-health"); a = sub.add_parser("approve"); a.add_argument("task_id")
+    sub.add_parser("provider-health"); sub.add_parser("metrics"); a = sub.add_parser("approve"); a.add_argument("task_id")
     args = ap.parse_args(argv); data = load(args.board)
     if args.command == "scan": print(json.dumps(scan(args.board, args.root), indent=2)); return 0
     if args.command == "review": print(json.dumps(review(args.board, args.root), indent=2)); return 0
@@ -104,6 +121,7 @@ def main(argv=None):
         task["approved"] = True; save(args.board, data); event(args.board, "task.approved", {"task_id": args.task_id}); print(json.dumps(task, indent=2)); return 0
     if args.command == "record": event(args.board, args.kind, json.loads(args.payload)); print(json.dumps({"recorded": True})); return 0
     if args.command == "provider-health": print(json.dumps({"providers": [{"name": "local", "free_or_paid": "free", "availability": "available"}, {"name": "freebuff", "free_or_paid": "free", "availability": "configured-only"}]})); return 0
+    if args.command == "metrics": print(json.dumps(metrics(args.board), indent=2)); return 0
     return 0
 if __name__ == "__main__": sys.exit(main())
 
