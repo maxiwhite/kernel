@@ -39,6 +39,14 @@ class Coordinator:
         self.lease_dir.mkdir(parents=True, exist_ok=True)
         path = self.lease_dir / f"{task_id}.json"
         payload = {"pid": os.getpid(), "created": time.time(), "expires": time.time() + self.lease_seconds}
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if existing.get("expires", 0) <= time.time():
+                    path.unlink()
+                    event(self.board_root, "task.lease_expired", {"task_id": task_id})
+            except (OSError, json.JSONDecodeError):
+                return False
         try:
             handle = path.open("x", encoding="utf-8")
             with handle:
