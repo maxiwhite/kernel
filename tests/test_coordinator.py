@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -65,3 +66,23 @@ def test_claim_reclaims_expired_lease(tmp_path):
     )
 
     assert coordinator.claim("a") is True
+
+
+def test_execute_allows_allowlisted_argv_and_records_result(tmp_path):
+    write_board(tmp_path, [])
+    result = Coordinator(tmp_path).execute(
+        {"id": "exec", "status": "staged"},
+        [sys.executable, "-c", "print('ok')"],
+        allowed_executables=[sys.executable],
+    )
+    assert result["status"] == "passed"
+    assert result["returncode"] == 0
+    assert result["stdout"].strip() == "ok"
+
+
+def test_execute_rejects_non_allowlisted_command(tmp_path):
+    write_board(tmp_path, [])
+    result = Coordinator(tmp_path).execute(
+        {"id": "exec", "status": "staged"}, ["not-allowed"], allowed_executables=[]
+    )
+    assert result["status"] == "blocked"
