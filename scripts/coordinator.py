@@ -5,7 +5,10 @@ import os
 import time
 from pathlib import Path
 
-from .kernel import event, load, save, ready_tasks
+try:
+    from .kernel import event, load, save, ready_tasks
+except ImportError:  # CLI execution from the scripts directory
+    from kernel import event, load, save, ready_tasks
 
 
 class Coordinator:
@@ -68,4 +71,3 @@ class Coordinator:
             event(self.board_root, "task.staged", {"task_id": task["id"], "providers": task["provider_candidates"]})
         save(self.board_root, data)
         return {"status": "staged", "selected": selected, "skipped": skipped, "worker_limit": self.workers}
-
