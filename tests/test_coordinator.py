@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 from scripts.coordinator import Coordinator
@@ -54,3 +55,13 @@ def test_run_batch_respects_worker_limit_and_stages_tasks_without_executor(tmp_p
     events = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
     assert events.count('"kind": "task.staged"') == 1
 
+
+def test_claim_reclaims_expired_lease(tmp_path):
+    write_board(tmp_path, [{"id": "a", "status": "planned"}])
+    coordinator = Coordinator(tmp_path, lease_seconds=10)
+    coordinator.lease_dir.mkdir()
+    (coordinator.lease_dir / "a.json").write_text(
+        json.dumps({"expires": time.time() - 1}), encoding="utf-8"
+    )
+
+    assert coordinator.claim("a") is True
