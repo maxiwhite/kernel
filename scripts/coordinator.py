@@ -39,6 +39,17 @@ class Coordinator:
         ]
         return ["local", *configured_free, "freebuff", *paid]
 
+    def select_provider(self, task, providers):
+        """Select the first available adapter matching the task capability."""
+        capability = task.get("capability")
+        for name in self.provider_order(task):
+            for provider in providers:
+                if (provider.name == name and provider.availability in {"available", "configured"}
+                        and (not capability or capability in provider.capabilities)
+                        and (provider.free_or_paid != "paid" or task.get("approved"))):
+                    return provider
+        return None
+
     def claim(self, task_id):
         self.lease_dir.mkdir(parents=True, exist_ok=True)
         path = self.lease_dir / f"{task_id}.json"
