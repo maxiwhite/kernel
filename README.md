@@ -1,13 +1,13 @@
 <!-- uniformity-header -->
 <div align="center">
 
-<img src="https://img.shields.io/badge/KERNEL-6366f1?style=for-the-badge&labelColor=0b1120" alt="KERNEL" />
+<img src="https://img.shields.io/badge/KERNEL-0a0a0b?style=for-the-badge&labelColor=fafafa" alt="KERNEL" />
 
 # KERNEL
 
 **A local-first Codex plugin for coordinating registered ecosystem work.**
 
-<img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" /> <img src="https://img.shields.io/badge/Codex-plugin-000000?style=flat-square" alt="Codex" /> <img src="https://img.shields.io/badge/local--first-yes-6366f1?style=flat-square" alt="local-first" />
+<img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="python" /> <img src="https://img.shields.io/badge/Codex-plugin-0a0a0b?style=flat-square&labelColor=fafafa" alt="codex" /> <img src="https://img.shields.io/badge/local--first-yes-0a0a0b?style=flat-square&labelColor=fafafa" alt="local-first" />
 
 </div>
 
