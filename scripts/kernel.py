@@ -154,6 +154,11 @@ def main(argv=None):
         providers = [adapter.health() for adapter in load_adapters(config)] if config.exists() else []
         print(json.dumps({"providers": providers}, indent=2)); return 0
     if args.command == "metrics": print(json.dumps(metrics(args.board), indent=2)); return 0
+    if args.command == "assess":
+        from assessment import assess
+        report = assess(data.get("tasks", []))
+        event(args.board, "board.assessed", {"measurement": report["measurement"], "duplicates": len(report["duplicates"])})
+        print(json.dumps(report, indent=2)); return 0
     return 0
 if __name__ == "__main__": sys.exit(main())
 
