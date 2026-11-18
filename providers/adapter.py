@@ -5,6 +5,8 @@ from typing import Any, Callable
 import json
 from pathlib import Path
 
+GPT_6_2_PAID_MODELS = frozenset({"gpt-6.2-sol", "gpt-6.2-astra"})
+
 
 @dataclass
 class ProviderAdapter:

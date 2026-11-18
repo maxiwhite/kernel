@@ -68,6 +68,26 @@ def test_approved_paid_provider_can_start_and_records_cost(tmp_path):
     assert json.loads(result.stdout)["approval_required"] is True
 
 
+def test_run_safe_requires_model_specific_opt_in_for_gpt_6_2(tmp_path):
+    board = tmp_path
+    model = "gpt-6.2-astra"
+    task = {"id": "upgrade", "status": "ready", "approved": True, "max_spend": 1}
+    data = {"projects": [], "tasks": [task], "providers": [
+        {"name": model, "free_or_paid": "paid", "availability": "configured"},
+    ]}
+    path = board / "board.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    result = run("run-safe", "upgrade", "--provider", model, board=board)
+    assert result.returncode == 2
+    assert json.loads(path.read_text(encoding="utf-8"))["tasks"][0]["status"] == "ready"
+
+    task["approved_model"] = model
+    path.write_text(json.dumps(data), encoding="utf-8")
+    result = run("run-safe", "upgrade", "--provider", model, board=board)
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["status"] == "staged"
+
+
 def test_verify_requires_evidence_and_writes_event(tmp_path):
     board = tmp_path / "board"
     board.mkdir()

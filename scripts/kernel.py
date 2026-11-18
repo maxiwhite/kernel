@@ -135,6 +135,13 @@ def main(argv=None):
     if args.command == "run-safe":
         task = next((t for t in data["tasks"] if t.get("id") == args.task_id), None)
         if not task: print("task not found", file=sys.stderr); return 1
+        from providers.adapter import GPT_6_2_PAID_MODELS
+
+        if args.provider in GPT_6_2_PAID_MODELS:
+            from coordinator import Coordinator
+            if args.provider not in Coordinator(args.board).provider_order(task):
+                print("provider configuration, model-specific approval and budget required", file=sys.stderr)
+                return 2
         paid = args.provider not in {"local", "freebuff", "free"}
         if paid and not task.get("approved"):
             print("approval required before paid provider execution", file=sys.stderr); return 2
