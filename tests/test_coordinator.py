@@ -4,6 +4,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from scripts.coordinator import Coordinator
 from providers.adapter import ProviderAdapter, load_adapters
 
@@ -170,6 +172,54 @@ def test_execute_with_provider_reports_unavailable(tmp_path):
     write_board(tmp_path, [])
     result = Coordinator(tmp_path).execute_with_provider({"id": "route"}, [], retries=1)
     assert result["status"] == "unavailable"
+
+
+@pytest.mark.parametrize("model", ["gpt-6.2-sol", "gpt-6.2-astra"])
+def test_gpt_6_2_requires_explicit_model_and_budget_and_prefers_local(tmp_path, model):
+    calls = []
+
+    def execute(_task):
+        calls.append(model)
+        return {"status": "failed"}
+
+    cloud = ProviderAdapter(model, free_or_paid="paid", availability="available", executor=execute)
+    local = ProviderAdapter("local", availability="available", executor=lambda _: {"status": "passed"})
+    write_board(tmp_path, [], [{"name": model, "free_or_paid": "paid", "availability": "configured"}])
+    coordinator = Coordinator(tmp_path)
+    task = {"id": "upgrade", "approved": True, "approved_model": model, "max_spend": 1}
+    assert coordinator.execute_with_provider(task, [cloud, local])["provider"] == "local"
+
+    for overrides in (
+        {"approved_model": None}, {"approved_model": "different-model"},
+        {"approved": False}, {"approved": "true"}, {"max_spend": None},
+        {"max_spend": False}, {"max_spend": 0}, {"max_spend": -1},
+        {"max_spend": "1"}, {"max_spend": float("nan")}, {"max_spend": float("inf")},
+    ):
+        assert coordinator.execute_with_provider({**task, **overrides}, [cloud])["status"] == "unavailable"
+
+    assert coordinator.execute_with_provider(task, [ProviderAdapter(
+        model, free_or_paid="paid", availability="available",
+    )])["status"] == "unavailable"
+    assert not calls
+    result = coordinator.execute_with_provider(task, [cloud], retries=2)
+    assert result["status"] == "failed"
+    assert result["attempts"] == 1
+    assert calls == [model]
+
+
+def test_gpt_6_2_rejects_free_catalog_and_adapter_metadata(tmp_path):
+    model = "gpt-6.2-sol"
+    task = {"id": "upgrade", "approved": True, "approved_model": model, "max_spend": 1}
+    free = ProviderAdapter(model, availability="available", executor=lambda _: {"status": "passed"})
+    paid = ProviderAdapter(model, free_or_paid="paid", availability="available",
+                           executor=lambda _: {"status": "passed"})
+    coordinator = Coordinator(tmp_path)
+    write_board(tmp_path, [], [{"name": model, "free_or_paid": "free", "availability": "configured"}])
+    assert coordinator.execute_with_provider(task, [paid])["status"] == "unavailable"
+    write_board(tmp_path, [], [{"name": model, "free_or_paid": "paid", "availability": "configured"}])
+    assert coordinator.execute_with_provider(task, [free])["status"] == "unavailable"
+    write_board(tmp_path, [])
+    assert coordinator.run_provider(model, task, paid.execute)["status"] == "unavailable"
 
 
 def test_load_adapters_reads_versioned_provider_config(tmp_path):

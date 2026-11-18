@@ -2,11 +2,14 @@
 
 import json
 import hashlib
+import math
 import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from providers.adapter import GPT_6_2_PAID_MODELS
 
 try:
     from .kernel import event, load, save, ready_tasks
@@ -25,17 +28,32 @@ class Coordinator:
     def ready_tasks(self):
         return ready_tasks(load(self.board_root))
 
+    @staticmethod
+    def _model_approved(task, model):
+        ceiling = task.get("max_spend")
+        valid_ceiling = type(ceiling) is int or (
+            isinstance(ceiling, float) and math.isfinite(ceiling)
+        )
+        return (
+            task.get("approved") is True
+            and task.get("approved_model") == model
+            and valid_ceiling
+            and ceiling > 0
+        )
+
     def provider_order(self, task):
         data = load(self.board_root)
         configured_free = [
             p["name"] for p in data.get("providers", [])
-            if p.get("name") != "local" and p.get("free_or_paid", "free") == "free"
+            if p.get("name") not in GPT_6_2_PAID_MODELS
+            and p.get("name") != "local" and p.get("free_or_paid", "free") == "free"
             and p.get("availability") in {"available", "configured"}
         ]
         paid = [
             p["name"] for p in data.get("providers", [])
             if p.get("free_or_paid") == "paid" and p.get("availability") in {"available", "configured"}
             and task.get("approved")
+            and (p["name"] not in GPT_6_2_PAID_MODELS or self._model_approved(task, p["name"]))
         ]
         return ["local", *configured_free, "freebuff", *paid]
 
@@ -44,6 +62,9 @@ class Coordinator:
         capability = task.get("capability")
         for name in self.provider_order(task):
             for provider in providers:
+                if provider.name == name and name in GPT_6_2_PAID_MODELS:
+                    if provider.free_or_paid != "paid" or provider.executor is None:
+                        continue
                 if (provider.name == name and provider.availability in {"available", "configured"}
                         and (not capability or capability in provider.capabilities)
                         and (provider.free_or_paid != "paid" or task.get("approved"))):
@@ -167,6 +188,17 @@ class Coordinator:
 
     def run_provider(self, provider_name, task, provider, *, retries=0):
         """Run a provider adapter with bounded retries for failed results."""
+        if provider_name in GPT_6_2_PAID_MODELS:
+            if provider_name not in self.provider_order(task):
+                result = {
+                    "task_id": task.get("id"),
+                    "provider": provider_name,
+                    "status": "unavailable",
+                    "error": "provider configuration, model-specific approval and budget required",
+                }
+                event(self.board_root, "provider.unavailable", result)
+                return result
+            retries = 0
         attempts = 0
         while True:
             attempts += 1
